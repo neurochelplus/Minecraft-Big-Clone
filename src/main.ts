@@ -2,8 +2,6 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { World } from './World';
 import { ItemEntity } from './ItemEntity';
-import { Mob } from './Mob';
-import { Zombie } from './Zombie';
 import { MobManager } from './MobManager';
 import './style.css';
 
@@ -72,7 +70,6 @@ const JUMP_HEIGHT = 1.25;
 const JUMP_IMPULSE = Math.sqrt(2 * GRAVITY * JUMP_HEIGHT);
 
 const velocity = new THREE.Vector3();
-const direction = new THREE.Vector3();
 
 const onKeyDown = (event: KeyboardEvent) => {
   switch (event.code) {
@@ -472,12 +469,22 @@ function respawn() {
   console.log("Respawned!");
 }
 
+// Combat Constants
+const ATTACK_RANGE = 2.5;
+const PUNCH_DAMAGE = 1;
+const ATTACK_COOLDOWN = 500;
+let lastPlayerAttackTime = 0;
+
 document.addEventListener('mousedown', (event) => {
   if (!controls.isLocked) return;
   if (isInventoryOpen) return;
   
   // 1. Check for Mob Hit
   if (event.button === 0) { // Left Click
+     const now = Date.now();
+     if (now - lastPlayerAttackTime < ATTACK_COOLDOWN) return;
+     lastPlayerAttackTime = now;
+
      raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
      const intersects = raycaster.intersectObjects(scene.children, true); // Recursive to hit mob parts
      
@@ -492,17 +499,13 @@ document.addEventListener('mousedown', (event) => {
          return false;
      });
 
-     if (mobHit && mobHit.distance < 4.0) { // Attack range 4.0
+     if (mobHit && mobHit.distance < ATTACK_RANGE) { 
          let obj = mobHit.object;
          while(obj && !obj.userData.mob) {
              obj = obj.parent!;
          }
          if (obj && obj.userData.mob) {
-             obj.userData.mob.takeDamage(5, controls.object.position); // Deal 5 damage
-             
-             // Attack animation (camera bob)
-             camera.position.y -= 0.1; 
-             setTimeout(() => camera.position.y += 0.1, 100);
+             obj.userData.mob.takeDamage(PUNCH_DAMAGE, controls.object.position); 
              return; // Don't break blocks if we hit a mob
          }
      }
@@ -553,7 +556,7 @@ document.addEventListener('mousedown', (event) => {
 
 const playerHalfWidth = 0.3;
 const playerHeight = 1.8;
-const eyeHeight = 1.7;
+const eyeHeight = 1.6;
 
 function checkCollision(position: THREE.Vector3): boolean {
   const minX = Math.floor(position.x - playerHalfWidth);
@@ -569,12 +572,12 @@ function checkCollision(position: THREE.Vector3): boolean {
         if (world.hasBlock(x, y, z)) {
           // Precise AABB check
           // Block AABB (blocks are centered at integer coordinates)
-          const blockMinX = x - 0.5;
-          const blockMaxX = x + 0.5;
-          const blockMinY = y - 0.5;
-          const blockMaxY = y + 0.5;
-          const blockMinZ = z - 0.5;
-          const blockMaxZ = z + 0.5;
+          const blockMinX = x;
+          const blockMaxX = x + 1;
+          const blockMinY = y;
+          const blockMaxY = y + 1;
+          const blockMinZ = z;
+          const blockMaxZ = z + 1;
 
           // Player AABB
           const playerMinX = position.x - playerHalfWidth;
@@ -622,7 +625,7 @@ function animate() {
       continue;
     }
 
-    if (entity.mesh.position.distanceTo(controls.object.position) < 1.5) {
+    if (entity.mesh.position.distanceTo(controls.object.position) < 2.5) {
       // Pickup logic
       const type = entity.type;
       
@@ -679,36 +682,54 @@ function animate() {
   }
   
   if (controls.isLocked) {
-    velocity.x -= velocity.x * 10.0 * delta;
-    velocity.z -= velocity.z * 10.0 * delta;
-    velocity.y -= GRAVITY * delta; // Gravity
+    // Input Vector (Local)
+    const inputX = Number(moveRight) - Number(moveLeft);
+    const inputZ = Number(moveForward) - Number(moveBackward);
 
-    direction.z = Number(moveForward) - Number(moveBackward);
-    direction.x = Number(moveRight) - Number(moveLeft);
-    direction.normalize();
+    // Get Camera Direction (World projected to flat plane)
+    const forward = new THREE.Vector3();
+    controls.getDirection(forward);
+    forward.y = 0;
+    forward.normalize();
 
-    if (moveForward || moveBackward) velocity.z -= direction.z * 50.0 * delta;
-    if (moveLeft || moveRight) velocity.x -= direction.x * 50.0 * delta;
+    const right = new THREE.Vector3();
+    right.crossVectors(forward, new THREE.Vector3(0, 1, 0));
 
-    // Apply movements separately to handle collisions
+    // Wish Direction (World)
+    const moveDir = new THREE.Vector3()
+        .addScaledVector(forward, inputZ)
+        .addScaledVector(right, inputX);
     
-    // X Axis
-    const dx = -velocity.x * delta;
-    controls.moveRight(dx);
-    if (checkCollision(controls.object.position)) {
-      controls.moveRight(-dx); // Revert
-      velocity.x = 0;
+    if (moveDir.lengthSq() > 0) moveDir.normalize();
+
+    // Acceleration & Friction
+    const speed = 50.0; // Acceleration force
+    const friction = 10.0; // Friction factor
+
+    if (moveForward || moveBackward || moveLeft || moveRight) {
+        velocity.x += moveDir.x * speed * delta;
+        velocity.z += moveDir.z * speed * delta;
     }
 
-    // Z Axis (Forward/Backward)
-    const dz = -velocity.z * delta;
-    controls.moveForward(dz);
+    velocity.x -= velocity.x * friction * delta;
+    velocity.z -= velocity.z * friction * delta;
+    velocity.y -= GRAVITY * delta;
+
+    // Apply & Collide X
+    controls.object.position.x += velocity.x * delta;
     if (checkCollision(controls.object.position)) {
-      controls.moveForward(-dz); // Revert
-      velocity.z = 0;
+        controls.object.position.x -= velocity.x * delta;
+        velocity.x = 0;
     }
 
-    // Y Axis
+    // Apply & Collide Z
+    controls.object.position.z += velocity.z * delta;
+    if (checkCollision(controls.object.position)) {
+        controls.object.position.z -= velocity.z * delta;
+        velocity.z = 0;
+    }
+
+    // Apply & Collide Y
     controls.object.position.y += velocity.y * delta;
     
     // Assume we are in air until we hit ground

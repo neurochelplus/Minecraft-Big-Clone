@@ -12,8 +12,8 @@ export class MobManager {
   private entities: ItemEntity[];
   
   private lastSpawnTime = 0;
-  private spawnInterval = 15000; // 15 seconds
-  private readonly MAX_MOBS = 15;
+  private spawnInterval = 10000; // 10 seconds
+  private readonly MAX_MOBS = 10;
 
   constructor(world: World, scene: THREE.Scene, entities: ItemEntity[]) {
     this.world = world;
@@ -58,13 +58,13 @@ export class MobManager {
     // 2. Spawn logic
     if (this.mobs.length < this.MAX_MOBS && now - this.lastSpawnTime > this.spawnInterval) {
       this.attemptSpawn(playerPos);
-      this.lastSpawnTime = now + Math.random() * 5000; // Randomize next interval (5-10s total)
+      this.lastSpawnTime = now + Math.random() * 5000; // Randomize next interval (10-15s total)
     }
   }
 
   private attemptSpawn(playerPos: THREE.Vector3) {
-    // Try 5 times to find a valid spot
-    for (let i = 0; i < 5; i++) {
+    // Try 10 times to find a valid spot
+    for (let i = 0; i < 10; i++) {
         // Random angle
         const angle = Math.random() * Math.PI * 2;
         // Random distance 20-40

@@ -61,9 +61,9 @@ export class World {
 
     const activeChunks = new Set<string>();
 
-    // Generate 5x5 grid (radius 2)
-    for (let x = cx - 2; x <= cx + 2; x++) {
-      for (let z = cz - 2; z <= cz + 2; z++) {
+    // Generate 7x7 grid (radius 3)
+    for (let x = cx - 3; x <= cx + 3; x++) {
+      for (let z = cz - 3; z <= cz + 3; z++) {
         const key = `${x},${z}`;
         activeChunks.add(key);
 

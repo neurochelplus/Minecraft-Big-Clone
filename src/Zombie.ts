@@ -4,7 +4,7 @@ import { Mob, MobState } from './Mob';
 export class Zombie extends Mob {
   
   // Slower than player (Player is usually faster, let's say Zombie is 3.5, Player ~5-6)
-  protected readonly walkSpeed = 1.75; 
+  protected readonly walkSpeed: number = 1.75; 
   private lastAttackTime = 0;
   
   // Arms
@@ -85,8 +85,8 @@ export class Zombie extends Mob {
       this.mesh.rotation.y = angle;
 
       // Base movement
-      // Stop at 1.7m (just inside attack range)
-      if (dist > 1.7) {
+      // Stop at 2.0m (just inside attack range)
+      if (dist > 2.0) {
           this.velocity.x = Math.sin(angle) * this.walkSpeed;
           this.velocity.z = Math.cos(angle) * this.walkSpeed;
       } else {
@@ -96,8 +96,8 @@ export class Zombie extends Mob {
       }
 
       // Separation (Push back if too close)
-      // Hard collision boundary at 1.3 units
-      if (dist < 1.3) {
+      // Hard collision boundary at 1.5 units
+      if (dist < 1.5) {
         const pushDir = this.mesh.position.clone().sub(playerPos).normalize();
         const pushSpeed = 5.0; // Stronger push
         this.velocity.x += pushDir.x * pushSpeed;
@@ -105,8 +105,8 @@ export class Zombie extends Mob {
       }
 
       // Attack Logic
-      // Attack range (1.9) > Stopping distance (1.7)
-      if (dist < 1.9) {
+      // Attack range (2.2) > Stopping distance (2.0)
+      if (dist < 2.2) {
         const now = performance.now();
         if (now - this.lastAttackTime > 1500) { // 1.5 second cooldown
             this.state = MobState.ATTACK;

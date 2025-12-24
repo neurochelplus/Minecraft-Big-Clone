@@ -51,6 +51,7 @@ export class ItemEntity {
     });
     
     this.mesh = new THREE.Mesh(geometry, material);
+    (this.mesh as any).isItem = true;
     this.mesh.position.set(x + 0.5, y + 0.5, z + 0.5);
     
     this.scene.add(this.mesh);

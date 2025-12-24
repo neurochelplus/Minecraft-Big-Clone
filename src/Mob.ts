@@ -1,12 +1,14 @@
 import * as THREE from 'three';
 import { World } from './World';
 
-export enum MobState {
-  IDLE,
-  WANDER,
-  CHASE,
-  ATTACK
-}
+export const MobState = {
+  IDLE: 0,
+  WANDER: 1,
+  CHASE: 2,
+  ATTACK: 3
+} as const;
+
+export type MobState = typeof MobState[keyof typeof MobState];
 
 export class Mob {
   public mesh: THREE.Group;
@@ -15,11 +17,11 @@ export class Mob {
   // Physics
   protected velocity = new THREE.Vector3();
   protected readonly gravity = 20.0;
-  protected readonly walkSpeed = 2.0;
+  protected readonly walkSpeed: number = 2.0;
   protected isOnGround = false;
 
   // Dimensions (AABB)
-  protected readonly width = 0.6;
+  protected readonly width = 0.5;
   protected readonly height = 1.8;
   
   // AI
@@ -39,6 +41,7 @@ export class Mob {
   public hp = 20;
   public maxHp = 20;
   public isDead = false;
+  public isHurt = false;
 
   constructor(world: World, scene: THREE.Scene, x: number, y: number, z: number) {
     this.world = world;
@@ -93,26 +96,39 @@ export class Mob {
   }
 
   public takeDamage(amount: number, attackerPos: THREE.Vector3) {
-    if (this.isDead) return;
+    if (this.isDead || this.isHurt) return;
     
     this.hp -= amount;
+    this.isHurt = true;
     
-    // Red Flash Effect
+    // Red Flash Effect (persistent for 0.5s)
     this.mesh.traverse((child) => {
       if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
-        const oldColor = child.material.color.clone();
+        if (!child.userData.originalColor) {
+           child.userData.originalColor = child.material.color.clone();
+        }
         child.material.color.set(0xff0000);
-        setTimeout(() => {
-          if (!this.isDead && child.material) { // Check if still alive/valid
-             child.material.color.copy(oldColor);
-          }
-        }, 100);
       }
     });
 
+    setTimeout(() => {
+        this.isHurt = false;
+        if (!this.isDead) {
+            this.mesh.traverse((child) => {
+                if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial && child.userData.originalColor) {
+                    child.material.color.copy(child.userData.originalColor);
+                }
+            });
+        }
+    }, 500);
+
     // Knockback
     const knockbackDir = this.mesh.position.clone().sub(attackerPos).normalize();
-    knockbackDir.y = 0.5; // Slight lift
+    knockbackDir.y = 0.4; // Slightly upward
+    knockbackDir.normalize();
+    
+    // Apply impulse
+    // We want it to fly ~1.5 blocks. With friction ~5.0, initial V should be around 8-10.
     this.velocity.add(knockbackDir.multiplyScalar(8.0));
     this.isOnGround = false;
 
@@ -122,11 +138,13 @@ export class Mob {
   }
 
   update(delta: number, playerPos?: THREE.Vector3, onAttack?: (damage: number) => void) {
-    this.updateAI(delta, playerPos, onAttack);
+    if (!this.isHurt) {
+        this.updateAI(delta, playerPos, onAttack);
+    }
     this.updatePhysics(delta);
   }
 
-  protected updateAI(delta: number, playerPos?: THREE.Vector3, onAttack?: (damage: number) => void) {
+  protected updateAI(delta: number, _playerPos?: THREE.Vector3, _onAttack?: (damage: number) => void) {
     if (this.state === MobState.IDLE) {
       // 1% chance per frame (assuming 60fps)
       if (Math.random() < 0.01) {
@@ -152,6 +170,13 @@ export class Mob {
   protected updatePhysics(delta: number) {
     // Gravity
     this.velocity.y -= this.gravity * delta;
+    
+    // Friction (Air resistance/Ground friction)
+    // Apply when hurt (knockback) or generally to smooth movement
+    // But AI overrides velocity directly, so this mainly affects Knockback (isHurt=true)
+    const friction = 5.0; 
+    this.velocity.x -= this.velocity.x * friction * delta;
+    this.velocity.z -= this.velocity.z * friction * delta;
     
     // X Movement
     const dx = this.velocity.x * delta;
